@@ -2,155 +2,158 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Fingerprint Lab</title>
+<title>Fingerprint Lab X</title>
+
 <style>
-    body {
-        background: #0d1117;
-        color: #00ff9f;
-        font-family: monospace;
-        padding: 20px;
-    }
-    h1 { color: #00ffd5; }
-    .box {
-        border: 1px solid #00ff9f;
-        padding: 10px;
-        margin: 10px 0;
-    }
+body {
+    background: #050505;
+    color: #00ffcc;
+    font-family: monospace;
+    padding: 20px;
+    overflow-x: hidden;
+}
+
+h1 {
+    color: #00ffe1;
+    text-shadow: 0 0 10px #00ffe1;
+}
+
+.box {
+    border: 1px solid #00ffcc;
+    padding: 10px;
+    margin: 10px 0;
+    box-shadow: 0 0 10px #00ffcc22;
+}
+
+canvas {
+    margin-top: 20px;
+}
+
+/* GLITCH */
+.glitch {
+    position: relative;
+    color: #00ffe1;
+}
+
+.glitch::before, .glitch::after {
+    content: attr(data-text);
+    position: absolute;
+    left: 0;
+}
+
+.glitch::before {
+    color: red;
+    animation: glitch 1s infinite;
+}
+
+.glitch::after {
+    color: blue;
+    animation: glitch 1s infinite reverse;
+}
+
+@keyframes glitch {
+    0% { transform: translate(0); }
+    20% { transform: translate(-2px,2px); }
+    40% { transform: translate(-2px,-2px); }
+    60% { transform: translate(2px,2px); }
+    80% { transform: translate(2px,-2px); }
+    100% { transform: translate(0); }
+}
 </style>
 </head>
+
 <body>
 
-<h1>🧬 Browser Fingerprint Lab</h1>
-
+<h1 class="glitch" data-text="🧬 Fingerprint Lab X">🧬 Fingerprint Lab X</h1>
 <div id="output"></div>
+<canvas id="radar" width="300" height="300"></canvas>
 
 <script>
 const out = document.getElementById("output")
 
-function log(title, value) {
+// =========================
+// TERMINAL TYPE EFFECT
+// =========================
+async function typeLog(title, value) {
     const div = document.createElement("div")
     div.className = "box"
-    div.innerHTML = `<b>${title}</b><br>${value}`
     out.appendChild(div)
+
+    let text = ">> " + title + "\n"
+    for (let c of text) {
+        div.innerHTML += c
+        await new Promise(r => setTimeout(r, 5))
+    }
+
+    div.innerHTML += value
 }
 
 // =========================
-// BASIC INFO
+// BASIC DATA
 // =========================
 const basic = {
-    userAgent: navigator.userAgent,
-    language: navigator.language,
-    platform: navigator.platform,
-    cores: navigator.hardwareConcurrency,
-    memory: navigator.deviceMemory || "unknown"
+    ua: navigator.userAgent,
+    lang: navigator.language,
+    cores: navigator.hardwareConcurrency
 }
 
-log("Basic Info", JSON.stringify(basic, null, 2))
-
-// =========================
-// SCREEN
-// =========================
 const screenData = {
-    width: screen.width,
-    height: screen.height,
-    colorDepth: screen.colorDepth
+    w: screen.width,
+    h: screen.height,
+    depth: screen.colorDepth
 }
-
-log("Screen", JSON.stringify(screenData, null, 2))
-
-// =========================
-// IP
-// =========================
-fetch("https://api.ipify.org?format=json")
-    .then(res => res.json())
-    .then(data => log("IP Address", data.ip))
-    .catch(() => log("IP Address", "Failed"))
 
 // =========================
 // CANVAS FP
 // =========================
-function getCanvasFP() {
-    const canvas = document.createElement("canvas")
-    const ctx = canvas.getContext("2d")
-
-    ctx.textBaseline = "top"
-    ctx.font = "16px Arial"
-    ctx.fillText("fingerprint", 10, 10)
-
-    return canvas.toDataURL()
+function canvasFP() {
+    const c = document.createElement("canvas")
+    const ctx = c.getContext("2d")
+    ctx.fillText("fp", 10, 10)
+    return c.toDataURL()
 }
-
-const canvasFP = getCanvasFP()
-log("Canvas FP", canvasFP.slice(0, 50) + "...")
 
 // =========================
 // WEBGL FP
 // =========================
-function getWebGLFP() {
-    const canvas = document.createElement("canvas")
-    const gl = canvas.getContext("webgl")
+function webglFP() {
+    const c = document.createElement("canvas")
+    const gl = c.getContext("webgl")
+    if (!gl) return "none"
 
-    if (!gl) return "no webgl"
-
-    const debugInfo = gl.getExtension("WEBGL_debug_renderer_info")
-
-    return {
-        vendor: gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL),
-        renderer: gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
-    }
+    const ext = gl.getExtension("WEBGL_debug_renderer_info")
+    return gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)
 }
-
-const webglFP = getWebGLFP()
-log("WebGL FP", JSON.stringify(webglFP, null, 2))
 
 // =========================
 // AUDIO FP
 // =========================
-async function getAudioFP() {
-    const ctx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 44100, 44100)
-
+async function audioFP() {
+    const ctx = new OfflineAudioContext(1, 44100, 44100)
     const osc = ctx.createOscillator()
-    osc.type = "triangle"
-    osc.frequency.value = 10000
+    osc.connect(ctx.destination)
+    osc.start()
+    const buf = await ctx.startRendering()
+    return buf.getChannelData(0)[0].toString()
+}
 
-    const compressor = ctx.createDynamicsCompressor()
+// =========================
+// ENTROPY CALCULATION
+// =========================
+function entropy(str) {
+    const map = {}
+    for (let c of str) map[c] = (map[c] || 0) + 1
 
-    osc.connect(compressor)
-    compressor.connect(ctx.destination)
-    osc.start(0)
-
-    const buffer = await ctx.startRendering()
-    let sum = 0
-
-    for (let i = 0; i < buffer.length; i++) {
-        sum += Math.abs(buffer.getChannelData(0)[i])
+    let e = 0
+    for (let k in map) {
+        let p = map[k] / str.length
+        e -= p * Math.log2(p)
     }
-
-    return sum.toString()
+    return e
 }
 
-getAudioFP().then(fp => log("Audio FP", fp))
-
 // =========================
-// FONTS (simple detection)
-// =========================
-function detectFonts() {
-    const fonts = ["Arial", "Courier", "Times", "Comic Sans MS"]
-    const detected = []
-
-    fonts.forEach(font => {
-        if (document.fonts.check("12px " + font)) {
-            detected.push(font)
-        }
-    })
-
-    return detected
-}
-
-log("Fonts", detectFonts().join(", "))
-
-// =========================
-// UNIQUE ID (HASH)
+// HASH
 // =========================
 function hash(str) {
     let h = 0
@@ -161,31 +164,123 @@ function hash(str) {
     return h
 }
 
-const fingerprintString = JSON.stringify({
-    basic,
-    screenData,
-    canvasFP,
-    webglFP
-})
-
-const userID = hash(fingerprintString)
-log("Unique ID", userID)
-
 // =========================
-// UNIQUENESS SCORE
+// MAIN
 // =========================
-const score = Math.min(100, Math.abs(userID) % 100)
-log("Uniqueness Score", score + "%")
+(async () => {
 
-// =========================
-// SAVE HISTORY
-// =========================
-const history = JSON.parse(localStorage.getItem("fp_history") || "[]")
-history.push({ time: Date.now(), userID })
+    const fp = {
+        basic,
+        screenData,
+        canvas: canvasFP(),
+        webgl: webglFP(),
+        audio: await audioFP()
+    }
 
-localStorage.setItem("fp_history", JSON.stringify(history))
+    const fpStr = JSON.stringify(fp)
+    const id = hash(fpStr)
 
-log("History Count", history.length)
+    // =========================
+    // SCORING (weighted)
+    // =========================
+    const scores = {
+        canvas: entropy(fp.canvas),
+        webgl: entropy(fp.webgl),
+        audio: entropy(fp.audio),
+        basic: entropy(JSON.stringify(basic))
+    }
+
+    const total =
+        scores.canvas * 3 +
+        scores.webgl * 3 +
+        scores.audio * 2 +
+        scores.basic * 1
+
+    const finalScore = Math.min(100, Math.floor(total * 10))
+
+    // =========================
+    // STORAGE
+    // =========================
+    let history = JSON.parse(localStorage.getItem("fp_history") || "[]")
+
+    const last = history[history.length - 1]
+
+    history.push({ id, fp, time: Date.now() })
+    localStorage.setItem("fp_history", JSON.stringify(history))
+
+    // =========================
+    // DIFF
+    // =========================
+    let diff = "First visit"
+
+    if (last) {
+        diff = ""
+        for (let k in fp) {
+            if (JSON.stringify(fp[k]) !== JSON.stringify(last.fp[k])) {
+                diff += "Changed: " + k + "<br>"
+            }
+        }
+        if (!diff) diff = "No changes detected"
+    }
+
+    // =========================
+    // OUTPUT
+    // =========================
+    await typeLog("User ID", id)
+    await typeLog("Score", finalScore + "%")
+
+    if (last) {
+        await typeLog("Tracking", "You were here before 👀")
+    }
+
+    await typeLog("Changes", diff)
+
+    // =========================
+    // RADAR CHART
+    // =========================
+    const canvas = document.getElementById("radar")
+    const ctx = canvas.getContext("2d")
+
+    const values = [
+        scores.canvas,
+        scores.webgl,
+        scores.audio,
+        scores.basic
+    ]
+
+    const labels = ["Canvas", "WebGL", "Audio", "Basic"]
+
+    const cx = 150, cy = 150, r = 100
+
+    ctx.strokeStyle = "#00ffcc"
+
+    for (let i = 0; i < values.length; i++) {
+        let angle = (i / values.length) * Math.PI * 2
+        let x = cx + Math.cos(angle) * r
+        let y = cy + Math.sin(angle) * r
+
+        ctx.beginPath()
+        ctx.moveTo(cx, cy)
+        ctx.lineTo(x, y)
+        ctx.stroke()
+
+        ctx.fillText(labels[i], x, y)
+    }
+
+    ctx.beginPath()
+    for (let i = 0; i < values.length; i++) {
+        let angle = (i / values.length) * Math.PI * 2
+        let val = values[i] * 20
+        let x = cx + Math.cos(angle) * val
+        let y = cy + Math.sin(angle) * val
+
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+    }
+    ctx.closePath()
+    ctx.stroke()
+
+})()
 
 </script>
 
