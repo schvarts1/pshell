@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fingerprint Lab</title>
+<style>
+    body {
+        background: #0d1117;
+        color: #00ff9f;
+        font-family: monospace;
+        padding: 20px;
+    }
+    h1 { color: #00ffd5; }
+    .box {
+        border: 1px solid #00ff9f;
+        padding: 10px;
+        margin: 10px 0;
+    }
+</style>
+</head>
+<body>
+
+<h1>🧬 Browser Fingerprint Lab</h1>
+
+<div id="output"></div>
+
+<script>
+const out = document.getElementById("output")
+
+function log(title, value) {
+    const div = document.createElement("div")
+    div.className = "box"
+    div.innerHTML = `<b>${title}</b><br>${value}`
+    out.appendChild(div)
+}
+
+// =========================
+// BASIC INFO
+// =========================
+const basic = {
+    userAgent: navigator.userAgent,
+    language: navigator.language,
+    platform: navigator.platform,
+    cores: navigator.hardwareConcurrency,
+    memory: navigator.deviceMemory || "unknown"
+}
+
+log("Basic Info", JSON.stringify(basic, null, 2))
+
+// =========================
+// SCREEN
+// =========================
+const screenData = {
+    width: screen.width,
+    height: screen.height,
+    colorDepth: screen.colorDepth
+}
+
+log("Screen", JSON.stringify(screenData, null, 2))
+
+// =========================
+// IP
+// =========================
+fetch("https://api.ipify.org?format=json")
+    .then(res => res.json())
+    .then(data => log("IP Address", data.ip))
+    .catch(() => log("IP Address", "Failed"))
+
+// =========================
+// CANVAS FP
+// =========================
+function getCanvasFP() {
+    const canvas = document.createElement("canvas")
+    const ctx = canvas.getContext("2d")
+
+    ctx.textBaseline = "top"
+    ctx.font = "16px Arial"
+    ctx.fillText("fingerprint", 10, 10)
+
+    return canvas.toDataURL()
+}
+
+const canvasFP = getCanvasFP()
+log("Canvas FP", canvasFP.slice(0, 50) + "...")
+
+// =========================
+// WEBGL FP
+// =========================
+function getWebGLFP() {
+    const canvas = document.createElement("canvas")
+    const gl = canvas.getContext("webgl")
+
+    if (!gl) return "no webgl"
+
+    const debugInfo = gl.getExtension("WEBGL_debug_renderer_info")
+
+    return {
+        vendor: gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL),
+        renderer: gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+    }
+}
+
+const webglFP = getWebGLFP()
+log("WebGL FP", JSON.stringify(webglFP, null, 2))
+
+// =========================
+// AUDIO FP
+// =========================
+async function getAudioFP() {
+    const ctx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 44100, 44100)
+
+    const osc = ctx.createOscillator()
+    osc.type = "triangle"
+    osc.frequency.value = 10000
+
+    const compressor = ctx.createDynamicsCompressor()
+
+    osc.connect(compressor)
+    compressor.connect(ctx.destination)
+    osc.start(0)
+
+    const buffer = await ctx.startRendering()
+    let sum = 0
+
+    for (let i = 0; i < buffer.length; i++) {
+        sum += Math.abs(buffer.getChannelData(0)[i])
+    }
+
+    return sum.toString()
+}
+
+getAudioFP().then(fp => log("Audio FP", fp))
+
+// =========================
+// FONTS (simple detection)
+// =========================
+function detectFonts() {
+    const fonts = ["Arial", "Courier", "Times", "Comic Sans MS"]
+    const detected = []
+
+    fonts.forEach(font => {
+        if (document.fonts.check("12px " + font)) {
+            detected.push(font)
+        }
+    })
+
+    return detected
+}
+
+log("Fonts", detectFonts().join(", "))
+
+// =========================
+// UNIQUE ID (HASH)
+// =========================
+function hash(str) {
+    let h = 0
+    for (let i = 0; i < str.length; i++) {
+        h = (h << 5) - h + str.charCodeAt(i)
+        h |= 0
+    }
+    return h
+}
+
+const fingerprintString = JSON.stringify({
+    basic,
+    screenData,
+    canvasFP,
+    webglFP
+})
+
+const userID = hash(fingerprintString)
+log("Unique ID", userID)
+
+// =========================
+// UNIQUENESS SCORE
+// =========================
+const score = Math.min(100, Math.abs(userID) % 100)
+log("Uniqueness Score", score + "%")
+
+// =========================
+// SAVE HISTORY
+// =========================
+const history = JSON.parse(localStorage.getItem("fp_history") || "[]")
+history.push({ time: Date.now(), userID })
+
+localStorage.setItem("fp_history", JSON.stringify(history))
+
+log("History Count", history.length)
+
+</script>
+
+</body>
+</html>
